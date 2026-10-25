@@ -19,7 +19,7 @@
 
         "access": {
           "$uid": {
-            ".write": "auth != null && $uid === auth.uid && !data.exists() && newData.isString() && root.child('invites').child(newData.val()).child('sid').val() === $sid && root.child('invites').child(newData.val()).child('usedBy').val() === auth.uid",
+            ".write": "auth != null && $uid === auth.uid && !data.exists() && newData.isString() && root.child('invites').child(newData.val()).child('sid').val() === $sid && (root.child('invites').child(newData.val()).child('usedBy').val() === auth.uid || (root.child('invites').child(newData.val()).child('multi').val() === true && root.child('invites').child(newData.val()).child('expiresAt').val() > now))",
             ".validate": "newData.val() === true || newData.isString()"
           }
         },
@@ -65,6 +65,8 @@
             "expiresAt": { ".validate": "newData.isNumber()" },
             "usedBy": { ".validate": "newData.isString()" },
             "usedAt": { ".validate": "newData.isNumber()" },
+            "multi": { ".validate": "newData.isBoolean()" },
+            "joined": { "$uid": { ".validate": "newData.isNumber()" } },
             "$other": { ".validate": false }
           }
         },
@@ -81,9 +83,10 @@
         "sid": { ".validate": "newData.isString()" },
         "createdBy": { ".validate": "newData.isString()" },
         "createdAt": { ".validate": "newData.isNumber()" },
-        "expiresAt": { ".validate": "newData.isNumber() && newData.val() <= now + 691200000" },
+        "expiresAt": { ".validate": "newData.isNumber() && newData.val() <= now + 2678400000" },
+        "multi": { ".validate": "newData.isBoolean()" },
         "usedBy": {
-          ".write": "auth != null && !data.exists() && newData.val() === auth.uid && data.parent().exists() && data.parent().child('expiresAt').val() > now",
+          ".write": "auth != null && !data.exists() && newData.val() === auth.uid && data.parent().exists() && data.parent().child('multi').val() !== true && data.parent().child('expiresAt').val() > now",
           ".validate": "newData.isString()"
         },
         "usedAt": {

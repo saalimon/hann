@@ -8,11 +8,13 @@
 
   let { token } = $props();
   let phase = $state('working'); // working | ok | gone | error
+  let viaGroup = $state(false);
 
   onMount(() => {
     let timer;
     claimInvite(token)
-      .then((sid) => {
+      .then(({ sid, multi }) => {
+        viaGroup = multi;
         phase = 'ok';
         rememberBill(sid, 'บิลที่ได้รับเชิญ');
         // replace() so the back button never lands on the spent link again
@@ -42,10 +44,12 @@
         <p class="body-lg muted">กำลังยืนยันลิงก์เชิญ</p>
       {:else if phase === 'ok'}
         <h1 class="display-lg">เข้าบิลแล้ว</h1>
-        <p class="body-lg muted">เครื่องนี้เปิดบิลได้ตลอด ลิงก์เชิญถูกใช้ไปแล้ว</p>
+        <p class="body-lg muted">
+          {viaGroup ? 'เครื่องนี้เปิดบิลนี้ได้ตลอด' : 'เครื่องนี้เปิดบิลได้ตลอด ลิงก์เชิญถูกใช้ไปแล้ว'}
+        </p>
       {:else if phase === 'gone'}
         <h1 class="display-lg">ลิงก์นี้ใช้ไม่ได้แล้ว</h1>
-        <p class="body-lg muted">ลิงก์เชิญเปิดได้ครั้งเดียว และอาจถูกใช้หรือหมดอายุไปแล้ว ขอลิงก์ใหม่จากเพื่อนในบิล</p>
+        <p class="body-lg muted">ลิงก์อาจถูกใช้ไปแล้ว ถูกปิด หรือหมดอายุ ขอลิงก์ใหม่จากเพื่อนในบิล</p>
         <a class="btn" href="#/">ไปหน้าแรก</a>
       {:else}
         <h1 class="display-lg">เปิดลิงก์ไม่สำเร็จ</h1>

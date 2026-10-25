@@ -3,7 +3,7 @@
 // Each tab gets its own uid (sessionStorage) so one-time links can be tested
 // by opening them in a second tab.
 import { randomId } from '../ids.js';
-import { BackendError, INVITE_TTL_MS } from './errors.js';
+import { BackendError, INVITE_TTL_MS, GROUP_TTL_MS } from './errors.js';
 
 const KEY = 'hann.localdb';
 const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('hann-local') : null;
@@ -92,14 +92,15 @@ export async function patch(sid, updates) {
   save(tree);
 }
 
-export async function createInvite(sid) {
+export async function createInvite(sid, { multi = false } = {}) {
   await delay();
   const tree = load();
   if (!isMember(tree, sid)) throw new BackendError('PERMISSION');
   const token = randomId(24);
-  const expiresAt = Date.now() + INVITE_TTL_MS;
-  setPath(tree, `invites/${token}`, { sid, createdBy: uid, createdAt: Date.now(), expiresAt });
-  setPath(tree, `sessions/${sid}/invites/${token}`, { createdAt: Date.now(), expiresAt });
+  const expiresAt = Date.now() + (multi ? GROUP_TTL_MS : INVITE_TTL_MS);
+  const extra = multi ? { multi: true } : {};
+  setPath(tree, `invites/${token}`, { sid, createdBy: uid, createdAt: Date.now(), expiresAt, ...extra });
+  setPath(tree, `sessions/${sid}/invites/${token}`, { createdAt: Date.now(), expiresAt, ...extra });
   save(tree);
   return token;
 }
@@ -117,14 +118,19 @@ export async function claimInvite(token) {
   const tree = load();
   const inv = getPath(tree, `invites/${token}`);
   if (!inv) throw new BackendError('INVITE_GONE');
-  if (inv.usedBy && inv.usedBy !== uid) throw new BackendError('INVITE_GONE');
-  if (!inv.usedBy && inv.expiresAt < Date.now()) throw new BackendError('INVITE_GONE');
+  const multi = inv.multi === true;
+  if (!multi && inv.usedBy && inv.usedBy !== uid) throw new BackendError('INVITE_GONE');
+  if ((multi || !inv.usedBy) && inv.expiresAt < Date.now()) throw new BackendError('INVITE_GONE');
   const now = Date.now();
-  setPath(tree, `invites/${token}/usedBy`, uid);
-  setPath(tree, `invites/${token}/usedAt`, now);
-  setPath(tree, `sessions/${inv.sid}/access/${uid}`, token);
-  setPath(tree, `sessions/${inv.sid}/invites/${token}/usedBy`, uid);
-  setPath(tree, `sessions/${inv.sid}/invites/${token}/usedAt`, now);
+  if (!getPath(tree, `sessions/${inv.sid}/access/${uid}`)) setPath(tree, `sessions/${inv.sid}/access/${uid}`, token);
+  if (multi) {
+    setPath(tree, `sessions/${inv.sid}/invites/${token}/joined/${uid}`, now);
+  } else {
+    setPath(tree, `invites/${token}/usedBy`, uid);
+    setPath(tree, `invites/${token}/usedAt`, now);
+    setPath(tree, `sessions/${inv.sid}/invites/${token}/usedBy`, uid);
+    setPath(tree, `sessions/${inv.sid}/invites/${token}/usedAt`, now);
+  }
   save(tree);
-  return inv.sid;
+  return { sid: inv.sid, multi };
 }

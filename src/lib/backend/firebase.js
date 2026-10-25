@@ -9,7 +9,7 @@ import {
 import { getDatabase, ref, onValue, get, update, serverTimestamp } from 'firebase/database';
 import { firebaseConfig } from '../../firebase-config.js';
 import { randomId } from '../ids.js';
-import { BackendError, INVITE_TTL_MS, toBackendError } from './errors.js';
+import { BackendError, INVITE_TTL_MS, GROUP_TTL_MS, toBackendError } from './errors.js';
 
 let auth = null;
 let db = null;
@@ -83,13 +83,18 @@ export async function patch(sid, updates) {
   }
 }
 
-export async function createInvite(sid) {
+/**
+ * Create an invite link. One-time links work for the first visitor only;
+ * group links (multi) let anyone with the link join until closed or expired.
+ */
+export async function createInvite(sid, { multi = false } = {}) {
   const token = randomId(24);
-  const expiresAt = Date.now() + INVITE_TTL_MS;
+  const expiresAt = Date.now() + (multi ? GROUP_TTL_MS : INVITE_TTL_MS);
+  const extra = multi ? { multi: true } : {};
   try {
     await update(ref(db), {
-      [`invites/${token}`]: { sid, createdBy: uid, createdAt: serverTimestamp(), expiresAt },
-      [`sessions/${sid}/invites/${token}`]: { createdAt: Date.now(), expiresAt },
+      [`invites/${token}`]: { sid, createdBy: uid, createdAt: serverTimestamp(), expiresAt, ...extra },
+      [`sessions/${sid}/invites/${token}`]: { createdAt: Date.now(), expiresAt, ...extra },
     });
   } catch (err) {
     throw toBackendError(err);
@@ -109,8 +114,10 @@ export async function revokeInvite(sid, token) {
 }
 
 /**
- * Redeem a one-time link. The security rules only let the first visitor write
- * `usedBy`; after that nobody else can even read the invite, so the link is dead.
+ * Redeem an invite and return { sid, multi }.
+ * One-time: the rules only let the first visitor write `usedBy`; after that nobody
+ * else can even read the invite, so the link is dead.
+ * Group: anyone may join while the link is open; joins are counted on the bill.
  */
 export async function claimInvite(token) {
   let invite;
@@ -120,25 +127,31 @@ export async function claimInvite(token) {
     throw toBackendError(err, 'INVITE_GONE');
   }
   if (!invite || !invite.sid) throw new BackendError('INVITE_GONE');
-  if (invite.usedBy && invite.usedBy !== uid) throw new BackendError('INVITE_GONE');
-  if (!invite.usedBy && invite.expiresAt < Date.now()) throw new BackendError('INVITE_GONE');
+  const multi = invite.multi === true;
+  if (!multi && invite.usedBy && invite.usedBy !== uid) throw new BackendError('INVITE_GONE');
+  if ((multi || !invite.usedBy) && invite.expiresAt < Date.now()) throw new BackendError('INVITE_GONE');
 
   const { sid } = invite;
   try {
-    if (!invite.usedBy) {
+    if (!multi && !invite.usedBy) {
       await update(ref(db), {
         [`invites/${token}/usedBy`]: uid,
         [`invites/${token}/usedAt`]: serverTimestamp(),
       });
     }
-    // Rules accept this only because the invite above now names us as its user.
+    // Rules accept this only for an open group link, or a one-time link that names us as its user.
     await update(ref(db), { [`sessions/${sid}/access/${uid}`]: token });
-    await update(ref(db), {
-      [`sessions/${sid}/invites/${token}/usedBy`]: uid,
-      [`sessions/${sid}/invites/${token}/usedAt`]: Date.now(),
-    });
+    await update(
+      ref(db),
+      multi
+        ? { [`sessions/${sid}/invites/${token}/joined/${uid}`]: Date.now() }
+        : {
+            [`sessions/${sid}/invites/${token}/usedBy`]: uid,
+            [`sessions/${sid}/invites/${token}/usedAt`]: Date.now(),
+          }
+    );
   } catch (err) {
     throw toBackendError(err, 'INVITE_GONE');
   }
-  return sid;
+  return { sid, multi };
 }
