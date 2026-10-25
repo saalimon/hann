@@ -12,5 +12,6 @@ export const firebaseConfig = {
   // Singapore ones like https://<project>-default-rtdb.asia-southeast1.firebasedatabase.app
   // It can also be set at build time with VITE_FIREBASE_DATABASE_URL.
   databaseURL:
-    import.meta.env.VITE_FIREBASE_DATABASE_URL || 'https://your-project-id-default-rtdb.firebaseio.com',
+    import.meta.env.VITE_FIREBASE_DATABASE_URL ||
+    'https://your-project-id-default-rtdb.asia-southeast1.firebasedatabase.app',
 };

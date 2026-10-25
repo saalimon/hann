@@ -19,11 +19,10 @@
 
 โปรเจกต์ `your-project-id` ใน [Firebase Console](https://console.firebase.google.com/project/your-project-id):
 
-1. **Realtime Database** → Create database (ถ้ายังไม่มี) แล้วดู URL ที่หัวหน้า Data
-   - ถ้าเป็น `https://your-project-id-default-rtdb.firebaseio.com` (US) ใช้ได้เลย
-   - ถ้าเป็น region อื่น เช่น `...asia-southeast1.firebasedatabase.app` ให้แก้ `databaseURL` ใน
-     [`src/firebase-config.js`](src/firebase-config.js) หรือตั้ง repository variable `FIREBASE_DATABASE_URL`
-     (Settings → Secrets and variables → Actions → Variables)
+1. **Realtime Database** อยู่ที่ region Singapore:
+   `https://your-project-id-default-rtdb.asia-southeast1.firebasedatabase.app` (ตั้งไว้ใน
+   [`src/firebase-config.js`](src/firebase-config.js) แล้ว ถ้าย้ายฐานข้อมูล แก้ที่ไฟล์นั้น
+   หรือตั้ง repository variable `FIREBASE_DATABASE_URL` ใน Settings → Secrets and variables → Actions → Variables)
 2. **Authentication** → Get started → Sign-in method → เปิด **Anonymous**
    (ใช้ระบุเครื่อง เพื่อให้ลิงก์เชิญใช้ได้ครั้งเดียวจริง ผู้ใช้ไม่ต้องสมัครอะไร)
 3. **Realtime Database → Rules** → วางเนื้อหาจาก [`database.rules.json`](database.rules.json) แล้วกด Publish
