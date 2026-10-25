@@ -1,0 +1,97 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "sessions": {
+      "$sid": {
+        ".read": "auth != null && data.child('access').child(auth.uid).exists()",
+        ".write": "auth != null && (data.child('access').child(auth.uid).exists() || (!data.exists() && newData.child('access').child(auth.uid).val() === true && newData.child('meta/createdBy').val() === auth.uid))",
+        ".validate": "$sid.length >= 20 && $sid.length <= 40",
+
+        "meta": {
+          ".validate": "newData.hasChildren(['title', 'createdAt', 'createdBy'])",
+          "title": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 80" },
+          "createdAt": { ".validate": "newData.isNumber()" },
+          "createdBy": { ".validate": "newData.isString()" },
+          "$other": { ".validate": false }
+        },
+
+        "access": {
+          "$uid": {
+            ".write": "auth != null && $uid === auth.uid && !data.exists() && newData.isString() && root.child('invites').child(newData.val()).child('sid').val() === $sid && root.child('invites').child(newData.val()).child('usedBy').val() === auth.uid",
+            ".validate": "newData.val() === true || newData.isString()"
+          }
+        },
+
+        "members": {
+          "$mid": {
+            ".validate": "newData.hasChildren(['name'])",
+            "name": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 40" },
+            "promptpay": { ".validate": "newData.isString() && newData.val().length <= 15 && (newData.val() === '' || newData.val().matches(/^[0-9]+$/))" },
+            "createdAt": { ".validate": "newData.isNumber()" },
+            "$other": { ".validate": false }
+          }
+        },
+
+        "items": {
+          "$iid": {
+            ".validate": "newData.hasChildren(['amount', 'paidBy'])",
+            "desc": { ".validate": "newData.isString() && newData.val().length <= 80" },
+            "amount": { ".validate": "newData.isNumber() && newData.val() > 0 && newData.val() < 100000000000" },
+            "paidBy": { ".validate": "newData.isString()" },
+            "split": { "$mid": { ".validate": "newData.val() === true" } },
+            "sc": { ".validate": "newData.isBoolean()" },
+            "vat": { ".validate": "newData.isBoolean()" },
+            "createdAt": { ".validate": "newData.isNumber()" },
+            "$other": { ".validate": false }
+          }
+        },
+
+        "payments": {
+          "$pid": {
+            ".validate": "newData.hasChildren(['from', 'to', 'amount', 'at'])",
+            "from": { ".validate": "newData.isString()" },
+            "to": { ".validate": "newData.isString()" },
+            "amount": { ".validate": "newData.isNumber() && newData.val() > 0" },
+            "at": { ".validate": "newData.isNumber()" },
+            "$other": { ".validate": false }
+          }
+        },
+
+        "invites": {
+          "$token": {
+            "createdAt": { ".validate": "newData.isNumber()" },
+            "expiresAt": { ".validate": "newData.isNumber()" },
+            "usedBy": { ".validate": "newData.isString()" },
+            "usedAt": { ".validate": "newData.isNumber()" },
+            "$other": { ".validate": false }
+          }
+        },
+
+        "$other": { ".validate": false }
+      }
+    },
+
+    "invites": {
+      "$token": {
+        ".read": "auth != null && data.exists() && (data.child('usedBy').val() === auth.uid || (!data.child('usedBy').exists() && data.child('expiresAt').val() > now) || root.child('sessions').child(data.child('sid').val()).child('access').child(auth.uid).exists())",
+        ".write": "auth != null && ((!data.exists() && newData.child('createdBy').val() === auth.uid && root.child('sessions').child(newData.child('sid').val()).child('access').child(auth.uid).exists()) || (data.exists() && !newData.exists() && root.child('sessions').child(data.child('sid').val()).child('access').child(auth.uid).exists()))",
+        ".validate": "newData.hasChildren(['sid', 'createdBy', 'createdAt', 'expiresAt']) && $token.length >= 20",
+        "sid": { ".validate": "newData.isString()" },
+        "createdBy": { ".validate": "newData.isString()" },
+        "createdAt": { ".validate": "newData.isNumber()" },
+        "expiresAt": { ".validate": "newData.isNumber() && newData.val() <= now + 691200000" },
+        "usedBy": {
+          ".write": "auth != null && !data.exists() && newData.val() === auth.uid && data.parent().exists() && data.parent().child('expiresAt').val() > now",
+          ".validate": "newData.isString()"
+        },
+        "usedAt": {
+          ".write": "auth != null && !data.exists() && newData.parent().child('usedBy').val() === auth.uid",
+          ".validate": "newData.isNumber()"
+        },
+        "$other": { ".validate": false }
+      }
+    }
+  }
+}

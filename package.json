@@ -1,0 +1,24 @@
+{
+  "name": "hann",
+  "version": "1.0.0",
+  "description": "หารค่าข้าว ค่าเที่ยว แบ่งตามคน พร้อม QR PromptPay",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node --test tests/*.test.js"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.3.1",
+    "svelte": "^5.57.2",
+    "vite": "^8.3.5"
+  },
+  "dependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
+    "@fontsource/anuphan": "^5.3.0",
+    "firebase": "^13.1.0",
+    "qrcode": "^1.5.4"
+  },
+  "private": true,
+  "type": "module"
+}
