@@ -1,12 +1,22 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import {
+  initializeAuth,
+  indexedDBLocalPersistence,
+  browserLocalPersistence,
+  signInAnonymously,
+  onAuthStateChanged,
+} from 'firebase/auth';
 import { getDatabase, ref, onValue, get, update, serverTimestamp } from 'firebase/database';
 import { firebaseConfig } from '../../firebase-config.js';
 import { randomId } from '../ids.js';
 import { BackendError, INVITE_TTL_MS, toBackendError } from './errors.js';
 
 const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
+// initializeAuth instead of getAuth: we only sign in anonymously, so we leave out
+// the popup/redirect resolver. That resolver loads a hidden iframe from
+// <project>.firebaseapp.com (eagerly on mobile and Safari) whose scripts register
+// `unload` handlers, which Chrome reports as a permissions-policy violation.
+const auth = initializeAuth(app, { persistence: [indexedDBLocalPersistence, browserLocalPersistence] });
 const db = getDatabase(app);
 
 let uid = null;
