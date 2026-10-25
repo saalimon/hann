@@ -97,3 +97,12 @@ export function settle(rows) {
 }
 
 export const transferKey = (t) => `${t.from}_${t.to}`;
+
+/**
+ * A payment is "pending" until the receiver confirms it. Pending payments still
+ * count toward balances (so the transfer leaves the to-do list right away); if the
+ * receiver says the money never arrived, the payment is removed and it comes back.
+ * Records without the flag predate confirmation and count as confirmed.
+ */
+export const isPending = (p) => p?.pending === true;
+

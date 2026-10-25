@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { promptPayPayload, parsePromptPayId, formatPromptPayId, crc16 } from '../src/lib/promptpay.js';
 import { parseBaht, itemTotal, formatBaht, splitBaht } from '../src/lib/money.js';
-import { computeBalances, settle } from '../src/lib/split.js';
+import { computeBalances, settle, isPending } from '../src/lib/split.js';
 
 // Expected payloads were cross-checked against the `promptpay-qr` npm library.
 test('promptpay payload: phone, no amount', () => {
@@ -116,4 +116,12 @@ test('items with removed members are skipped, not crashed', () => {
   const { total, skipped } = computeBalances(members, items);
   assert.equal(total, 0);
   assert.deepEqual(skipped, ['i1']);
+});
+
+test('pending payments already count toward settlement; legacy records are confirmed', () => {
+  const items = { i1: { amount: 60000, paidBy: 'a', split: { a: true, b: true, c: true }, createdAt: 1 } };
+  const payments = { p1: { from: 'b', to: 'a', amount: 20000, at: 1, pending: true } };
+  assert.deepEqual(settle(computeBalances(members, items, payments).rows), [{ from: 'c', to: 'a', amount: 20000 }]);
+  assert.equal(isPending(payments.p1), true);
+  assert.equal(isPending({ from: 'b', to: 'a', amount: 1 }), false);
 });

@@ -3,13 +3,14 @@
   import { promptPayPayload, parsePromptPayId, formatPromptPayId, ID_TYPE_LABEL, sanitizeId } from '../lib/promptpay.js';
   import { formatBaht } from '../lib/money.js';
   import { renderPayImage, shareOrDownload } from '../lib/pay-image.js';
+  import { compressSlip } from '../lib/slip.js';
   import { toast } from '../lib/toast.svelte.js';
   import Sheet from './Sheet.svelte';
   import QR from './QR.svelte';
   import Money from './Money.svelte';
   import Icon from './Icon.svelte';
 
-  let { transfer, from, to, onclose, onmarkpaid, onsavepp } = $props();
+  let { transfer, from, to, me = null, onclose, onreport, onreceived, onsavepp } = $props();
 
   const pp = $derived(parsePromptPayId(to.promptpay));
   const payload = $derived(pp ? promptPayPayload(pp.digits, transfer.amount) : null);
@@ -19,6 +20,11 @@
   let saving = $state(false);
   let exporting = $state(false);
   let marking = $state(false);
+  let reporting = $state(false); // payer opened the "I've paid" step
+  let slip = $state(null); // compressed data URL
+  let slipBusy = $state(false);
+  let slipInput = $state(null);
+  const isReceiver = $derived(me === to.id);
   const newPpInvalid = $derived(newPp.trim() !== '' && !parsePromptPayId(newPp));
 
   async function savePp(e) {
@@ -61,10 +67,37 @@
     }
   }
 
-  async function markPaid() {
+  async function pickSlip(e) {
+    const file = e.currentTarget.files?.[0];
+    e.currentTarget.value = '';
+    if (!file) return;
+    slipBusy = true;
+    try {
+      slip = await compressSlip(file);
+    } catch (err) {
+      toast(err?.message === 'SLIP_NOT_IMAGE' ? 'เลือกไฟล์รูปภาพ' : 'อ่านรูปสลิปไม่ได้ ลองรูปอื่น', { tone: 'bad' });
+    } finally {
+      slipBusy = false;
+    }
+  }
+
+  async function report() {
     marking = true;
     try {
-      await onmarkpaid(transfer);
+      await onreport(transfer, slip);
+    } catch {
+      /* toast shown by caller */
+    } finally {
+      marking = false;
+    }
+  }
+
+  async function received() {
+    marking = true;
+    try {
+      await onreceived(transfer);
+    } catch {
+      /* toast shown by caller */
     } finally {
       marking = false;
     }
@@ -104,10 +137,38 @@
     </p>
   {/if}
 
+  {#if reporting && !isReceiver}
+    <div class="report card" transition:slide={{ duration: 280 }}>
+      <p class="body-sm">แนบสลิปให้{to.name}ดูประกอบได้ (ไม่บังคับ) แล้วกดแจ้งโอน {to.name}จะเป็นคนกดยืนยันว่าได้รับเงิน</p>
+      <input class="visually-hidden" type="file" accept="image/*" bind:this={slipInput} onchange={pickSlip} />
+      {#if slip}
+        <div class="slip-preview" in:slide={{ duration: 220 }}>
+          <img src={slip} alt="สลิปที่แนบ" />
+          <button class="btn quiet small" onclick={() => (slip = null)}>เอาสลิปออก</button>
+        </div>
+      {/if}
+      <div class="actions">
+        <button class="btn" onclick={report} disabled={marking || slipBusy}>
+          <Icon name="check" />{marking ? 'กำลังส่ง…' : slip ? 'แจ้งโอนพร้อมสลิป' : 'แจ้งโอน'}
+        </button>
+        <button class="btn secondary" onclick={() => slipInput.click()} disabled={slipBusy || marking}>
+          <Icon name="image" />{slipBusy ? 'กำลังย่อรูป…' : slip ? 'เปลี่ยนสลิป' : 'แนบสลิป'}
+        </button>
+        <button class="btn quiet" onclick={() => ((reporting = false), (slip = null))}>ยกเลิก</button>
+      </div>
+    </div>
+  {/if}
+
   <div class="actions">
-    <button class="btn" onclick={markPaid} disabled={marking}>
-      <Icon name="check" />{marking ? 'กำลังบันทึก…' : 'โอนแล้ว'}
-    </button>
+    {#if isReceiver}
+      <button class="btn" onclick={received} disabled={marking}>
+        <Icon name="check" />{marking ? 'กำลังบันทึก…' : 'ได้รับเงินแล้ว'}
+      </button>
+    {:else if !reporting}
+      <button class="btn" onclick={() => (reporting = true)}>
+        <Icon name="check" />แจ้งว่าโอนแล้ว
+      </button>
+    {/if}
     {#if payload}
       <button class="btn secondary" onclick={exportImage} disabled={exporting}>
         <Icon name="download" />{exporting ? 'กำลังสร้างรูป…' : 'บันทึกรูป QR'}
@@ -174,5 +235,25 @@
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
+  }
+  .report {
+    display: grid;
+    gap: 14px;
+  }
+  .report p {
+    margin: 0;
+  }
+  .slip-preview {
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+  }
+  .slip-preview img {
+    width: 96px;
+    max-height: 180px;
+    object-fit: cover;
+    object-position: top;
+    border-radius: var(--r-md);
+    box-shadow: 0 0 0 1px var(--hairline);
   }
 </style>

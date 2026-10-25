@@ -5,5 +5,17 @@ const impl =
     ? await import('./local.js')
     : await import('./firebase.js');
 
-export const { init, getUid, createSession, watchSession, patch, createInvite, revokeInvite, claimInvite } = impl;
+export const {
+  init,
+  getUid,
+  createSession,
+  watchSession,
+  patch,
+  createInvite,
+  revokeInvite,
+  claimInvite,
+  addPayment,
+  removePayment,
+  getSlip,
+} = impl;
 export { BackendError } from './errors.js';

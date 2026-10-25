@@ -2,10 +2,9 @@
   import { onMount, untrack } from 'svelte';
   import { fly, fade, slide } from 'svelte/transition';
   import { quintOut } from 'svelte/easing';
-  import { watchSession, patch } from '../lib/backend/index.js';
-  import { orderedMembers, orderedItems, orderedPayments, computeBalances, settle } from '../lib/split.js';
+  import { watchSession, patch, addPayment, removePayment } from '../lib/backend/index.js';
+  import { orderedMembers, orderedItems, orderedPayments, computeBalances, settle, isPending } from '../lib/split.js';
   import { formatBaht } from '../lib/money.js';
-  import { childId } from '../lib/ids.js';
   import { rememberBill, forgetBill, getMe, setMe } from '../lib/local-prefs.js';
   import { toast, explainError } from '../lib/toast.svelte.js';
   import Nav from './Nav.svelte';
@@ -18,6 +17,7 @@
   import SettlePanel from './SettlePanel.svelte';
   import PaySheet from './PaySheet.svelte';
   import ShareSheet from './ShareSheet.svelte';
+  import SlipSheet from './SlipSheet.svelte';
 
   let { sid } = $props();
 
@@ -28,6 +28,8 @@
   let tab = $state('items');
   let shareOpen = $state(false);
   let paying = $state(null);
+  let viewingSlip = $state(null);
+  let sideEl = $state(null);
   let editingTitle = $state(false);
   let titleDraft = $state('');
   let pickDismissed = $state(false);
@@ -71,6 +73,8 @@
   const meValid = $derived(me && people[me] ? me : null);
   const myOut = $derived(meValid ? transfers.filter((t) => t.from === meValid) : []);
   const myIn = $derived(meValid ? transfers.filter((t) => t.to === meValid) : []);
+  const toConfirm = $derived(meValid ? payments.filter((p) => isPending(p) && p.to === meValid) : []);
+  const awaiting = $derived(meValid ? payments.filter((p) => isPending(p) && p.from === meValid) : []);
 
   const tabs = $derived([
     { value: 'items', label: 'รายการ', count: items.length },
@@ -107,12 +111,49 @@
     if (t && t !== session.meta?.title) await save({ 'meta/title': t }).catch(() => {});
   }
 
-  async function markPaid(t) {
-    await save({ [`payments/${childId()}`]: { from: t.from, to: t.to, amount: t.amount, at: Date.now() } }, 'บันทึกว่าโอนแล้ว');
+  async function run(fn, okMessage) {
+    try {
+      await fn();
+      if (okMessage) toast(okMessage);
+    } catch (err) {
+      toast(explainError(err), { tone: 'bad' });
+      throw err;
+    }
+  }
+
+  // Payer says they've paid: recorded as pending until the receiver confirms.
+  async function reportPaid(t, slip) {
+    const payment = { from: t.from, to: t.to, amount: t.amount, at: Date.now(), pending: true };
+    if (meValid) payment.reportedBy = meValid;
+    await run(() => addPayment(sid, payment, slip), `แจ้งโอนแล้ว รอ${people[t.to]?.name ?? ''}ยืนยัน`);
     paying = null;
   }
+  // Receiver records money that already arrived (e.g. paid in cash): confirmed at once.
+  async function receivedPaid(t) {
+    const now = Date.now();
+    const payment = { from: t.from, to: t.to, amount: t.amount, at: now, confirmedAt: now, confirmedBy: meValid };
+    await run(() => addPayment(sid, payment), 'บันทึกว่าได้รับเงินแล้ว');
+    paying = null;
+  }
+  async function confirmPayment(p) {
+    await save(
+      {
+        [`payments/${p.id}/pending`]: null,
+        [`payments/${p.id}/confirmedAt`]: Date.now(),
+        [`payments/${p.id}/confirmedBy`]: meValid,
+      },
+      `ยืนยันว่าได้รับจาก${people[p.from]?.name ?? ''}แล้ว`
+    );
+  }
+  async function rejectPayment(p) {
+    await run(() => removePayment(sid, p.id), `ยอดของ${people[p.from]?.name ?? ''}กลับไปอยู่ในรายการที่ต้องโอน`);
+  }
   async function undoPayment(p) {
-    await save({ [`payments/${p.id}`]: null }, 'ยกเลิกสถานะโอนแล้ว').catch(() => {});
+    await run(() => removePayment(sid, p.id), isPending(p) ? 'ยกเลิกแจ้งโอนแล้ว' : 'ยกเลิกรายการโอนแล้ว');
+  }
+  function showSettle() {
+    if (wide) sideEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    else tab = 'settle';
   }
   async function savePp(memberId, pp) {
     await save({ [`members/${memberId}/promptpay`]: pp }, 'บันทึกพร้อมเพย์แล้ว').catch(() => {});
@@ -195,8 +236,13 @@
       </p>
     </div>
 
-    {#if meValid && (myOut.length || myIn.length)}
+    {#if meValid && (myOut.length || myIn.length || toConfirm.length || awaiting.length)}
       <div class="mine" in:slide={{ duration: 300, easing: quintOut }}>
+        {#each toConfirm as p (p.id)}
+          <button class="mine-chip alert" onclick={showSettle}>
+            {people[p.from]?.name}แจ้งโอน <b class="num">฿{formatBaht(p.amount)}</b> แตะเพื่อยืนยัน
+          </button>
+        {/each}
         {#each myOut as t (t.to)}
           <button class="mine-chip" onclick={() => (paying = t)}>
             คุณต้องโอนให้ {people[t.to].name} <b class="num">฿{formatBaht(t.amount)}</b>
@@ -206,6 +252,11 @@
         {#each myIn as t (t.from)}
           <span class="mine-chip passive">
             รอรับจาก {people[t.from].name} <b class="num">฿{formatBaht(t.amount)}</b>
+          </span>
+        {/each}
+        {#each awaiting as p (p.id)}
+          <span class="mine-chip passive">
+            <Icon name="clock" size={15} />รอ{people[p.to]?.name}ยืนยัน <b class="num">฿{formatBaht(p.amount)}</b>
           </span>
         {/each}
       </div>
@@ -243,6 +294,9 @@
               hasItems={balances.total > 0}
               onpay={(t) => (paying = t)}
               onundo={undoPayment}
+              onconfirm={confirmPayment}
+              onreject={rejectPayment}
+              onviewslip={(p) => (viewingSlip = p)}
             />
           {/if}
         </div>
@@ -250,7 +304,7 @@
     </div>
 
     {#if wide}
-      <aside class="side">
+      <aside class="side" bind:this={sideEl}>
         <SettlePanel
           {people}
           balances={balances.rows}
@@ -260,6 +314,9 @@
           hasItems={balances.total > 0}
           onpay={(t) => (paying = t)}
           onundo={undoPayment}
+          onconfirm={confirmPayment}
+          onreject={rejectPayment}
+          onviewslip={(p) => (viewingSlip = p)}
         />
       </aside>
     {/if}
@@ -270,9 +327,21 @@
       transfer={paying}
       from={people[paying.from]}
       to={people[paying.to]}
+      me={meValid}
       onclose={() => (paying = null)}
-      onmarkpaid={markPaid}
+      onreport={reportPaid}
+      onreceived={receivedPaid}
       onsavepp={savePp}
+    />
+  {/if}
+
+  {#if viewingSlip}
+    <SlipSheet
+      {sid}
+      payment={viewingSlip}
+      fromName={people[viewingSlip.from]?.name ?? '?'}
+      toName={people[viewingSlip.to]?.name ?? '?'}
+      onclose={() => (viewingSlip = null)}
     />
   {/if}
 
@@ -378,6 +447,19 @@
   }
   .mine-chip:active {
     transform: scale(0.96);
+  }
+  .mine-chip.alert {
+    box-shadow: 0 0 0 3px rgba(0, 153, 255, 0.45);
+    animation: nudge 2.4s var(--ease-out) infinite;
+  }
+  @keyframes nudge {
+    0%,
+    100% {
+      box-shadow: 0 0 0 3px rgba(0, 153, 255, 0.45);
+    }
+    50% {
+      box-shadow: 0 0 0 7px rgba(0, 153, 255, 0.12);
+    }
   }
   .mine-chip.passive {
     background: var(--surface-2);

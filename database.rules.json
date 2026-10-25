@@ -55,6 +55,11 @@
             "to": { ".validate": "newData.isString()" },
             "amount": { ".validate": "newData.isNumber() && newData.val() > 0" },
             "at": { ".validate": "newData.isNumber()" },
+            "pending": { ".validate": "newData.val() === true" },
+            "reportedBy": { ".validate": "newData.isString()" },
+            "slip": { ".validate": "newData.isBoolean()" },
+            "confirmedAt": { ".validate": "newData.isNumber()" },
+            "confirmedBy": { ".validate": "newData.isString()" },
             "$other": { ".validate": false }
           }
         },
@@ -72,6 +77,19 @@
         },
 
         "$other": { ".validate": false }
+      }
+    },
+
+    "slips": {
+      "$sid": {
+        "$pid": {
+          ".read": "auth != null && root.child('sessions').child($sid).child('access').child(auth.uid).exists()",
+          ".write": "auth != null && root.child('sessions').child($sid).child('access').child(auth.uid).exists()",
+          ".validate": "newData.hasChildren(['data', 'at'])",
+          "data": { ".validate": "newData.isString() && newData.val().beginsWith('data:image/') && newData.val().length <= 1400000" },
+          "at": { ".validate": "newData.isNumber()" },
+          "$other": { ".validate": false }
+        }
       }
     },
 

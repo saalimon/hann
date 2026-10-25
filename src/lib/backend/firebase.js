@@ -8,7 +8,7 @@ import {
 } from 'firebase/auth';
 import { getDatabase, ref, onValue, get, update, serverTimestamp } from 'firebase/database';
 import { firebaseConfig } from '../../firebase-config.js';
-import { randomId } from '../ids.js';
+import { randomId, childId } from '../ids.js';
 import { BackendError, INVITE_TTL_MS, GROUP_TTL_MS, toBackendError } from './errors.js';
 
 let auth = null;
@@ -155,3 +155,39 @@ export async function claimInvite(token) {
   }
   return { sid, multi };
 }
+
+/**
+ * Record a transfer. A slip (JPEG data URL) is optional and kept outside the
+ * session node so loading the bill never downloads images.
+ */
+export async function addPayment(sid, payment, slipDataUrl = null) {
+  const pid = childId();
+  const updates = {
+    [`sessions/${sid}/payments/${pid}`]: { ...payment, ...(slipDataUrl ? { slip: true } : {}) },
+  };
+  if (slipDataUrl) updates[`slips/${sid}/${pid}`] = { data: slipDataUrl, at: Date.now() };
+  try {
+    await update(ref(db), updates);
+  } catch (err) {
+    throw toBackendError(err);
+  }
+  return pid;
+}
+
+export async function removePayment(sid, pid) {
+  try {
+    await update(ref(db), { [`sessions/${sid}/payments/${pid}`]: null, [`slips/${sid}/${pid}`]: null });
+  } catch (err) {
+    throw toBackendError(err);
+  }
+}
+
+/** Fetch a slip image on demand; returns a data URL or null. */
+export async function getSlip(sid, pid) {
+  try {
+    return (await get(ref(db, `slips/${sid}/${pid}`))).val()?.data ?? null;
+  } catch (err) {
+    throw toBackendError(err);
+  }
+}
+

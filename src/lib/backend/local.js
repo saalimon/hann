@@ -2,7 +2,7 @@
 // development and UI testing. Data lives in localStorage and syncs across tabs.
 // Each tab gets its own uid (sessionStorage) so one-time links can be tested
 // by opening them in a second tab.
-import { randomId } from '../ids.js';
+import { randomId, childId } from '../ids.js';
 import { BackendError, INVITE_TTL_MS, GROUP_TTL_MS } from './errors.js';
 
 const KEY = 'hann.localdb';
@@ -134,3 +134,31 @@ export async function claimInvite(token) {
   save(tree);
   return { sid: inv.sid, multi };
 }
+
+export async function addPayment(sid, payment, slipDataUrl = null) {
+  await delay(slipDataUrl ? 400 : 80);
+  const tree = load();
+  if (!isMember(tree, sid)) throw new BackendError('PERMISSION');
+  const pid = childId();
+  setPath(tree, `sessions/${sid}/payments/${pid}`, { ...payment, ...(slipDataUrl ? { slip: true } : {}) });
+  if (slipDataUrl) setPath(tree, `slips/${sid}/${pid}`, { data: slipDataUrl, at: Date.now() });
+  save(tree);
+  return pid;
+}
+
+export async function removePayment(sid, pid) {
+  await delay(80);
+  const tree = load();
+  if (!isMember(tree, sid)) throw new BackendError('PERMISSION');
+  setPath(tree, `sessions/${sid}/payments/${pid}`, null);
+  setPath(tree, `slips/${sid}/${pid}`, null);
+  save(tree);
+}
+
+export async function getSlip(sid, pid) {
+  await delay(200);
+  const tree = load();
+  if (!isMember(tree, sid)) throw new BackendError('PERMISSION');
+  return getPath(tree, `slips/${sid}/${pid}/data`) ?? null;
+}
+

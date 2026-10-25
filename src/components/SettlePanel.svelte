@@ -3,16 +3,30 @@
   import { flip } from 'svelte/animate';
   import { quintOut } from 'svelte/easing';
   import { formatBaht } from '../lib/money.js';
-  import { transferKey } from '../lib/split.js';
+  import { transferKey, isPending } from '../lib/split.js';
   import { parsePromptPayId } from '../lib/promptpay.js';
   import Avatar from './Avatar.svelte';
   import Icon from './Icon.svelte';
 
-  let { people, balances, transfers, payments, me, hasItems, onpay, onundo } = $props();
+  let { people, balances, transfers, payments, me, hasItems, onpay, onundo, onconfirm, onreject, onviewslip } = $props();
 
   let showDetail = $state(false);
   const timeFmt = new Intl.DateTimeFormat('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-  const allDone = $derived(hasItems && transfers.length === 0);
+  const pending = $derived(payments.filter(isPending).reverse());
+  const confirmed = $derived(payments.filter((p) => !isPending(p)).reverse());
+  const allDone = $derived(hasItems && transfers.length === 0 && pending.length === 0);
+  const name = (id) => people[id]?.name ?? '?';
+  let busy = $state(null);
+  async function act(id, fn) {
+    busy = id;
+    try {
+      await fn();
+    } catch {
+      /* toast already shown */
+    } finally {
+      busy = null;
+    }
+  }
 </script>
 
 <section class="stack" style="--gap: 20px">
@@ -56,19 +70,68 @@
     </ul>
   {/if}
 
-  {#if payments.length}
-    <div class="paid">
-      <h3 class="caption muted">โอนแล้ว</h3>
-      <ul>
-        {#each [...payments].reverse() as p (p.id)}
-          <li animate:flip={{ duration: 320 }} in:slide={{ duration: 280 }} out:slide={{ duration: 200 }}>
-            <span class="tick small"><Icon name="check" size={14} /></span>
-            <span class="paid-text">
-              {people[p.from]?.name ?? '?'} โอนให้ {people[p.to]?.name ?? '?'}
-              <span class="num">฿{formatBaht(p.amount)}</span>
-              <span class="muted when">{timeFmt.format(p.at)}</span>
+  {#if pending.length}
+    <div class="group">
+      <h3 class="caption muted">รอคนรับยืนยัน</h3>
+      {#if !me}
+        <p class="caption muted hint">เลือกว่าคุณคือใครในแท็บ "คน" ถึงจะยืนยันยอดที่ได้รับได้</p>
+      {/if}
+      <ul class="pay-list">
+        {#each pending as p (p.id)}
+          {@const forMe = me === p.to}
+          <li class="pay pending" class:forme={forMe} animate:flip={{ duration: 320 }} in:slide={{ duration: 280 }} out:slide={{ duration: 200 }}>
+            <span class="badge wait"><Icon name="clock" size={15} /></span>
+            <span class="pay-main">
+              <span class="pay-line">
+                {name(p.from)} แจ้งโอนให้ {name(p.to)} <b class="num">฿{formatBaht(p.amount)}</b>
+              </span>
+              <span class="pay-meta muted">
+                {timeFmt.format(p.at)}
+                {#if p.slip}
+                  <button class="slip-btn" onclick={() => onviewslip(p)}><Icon name="image" size={14} />ดูสลิป</button>
+                {/if}
+              </span>
+              <span class="pay-actions">
+                {#if forMe}
+                  <button class="btn small" disabled={busy === p.id} onclick={() => act(p.id, () => onconfirm(p))}>
+                    <Icon name="check" size={16} />ได้รับแล้ว
+                  </button>
+                  <button class="btn quiet small" disabled={busy === p.id} onclick={() => act(p.id, () => onreject(p))}>ยังไม่ได้รับ</button>
+                {:else if me === p.from}
+                  <span class="muted caption">รอ{name(p.to)}ยืนยัน</span>
+                  <button class="btn quiet small" disabled={busy === p.id} onclick={() => act(p.id, () => onundo(p))}>ยกเลิกแจ้งโอน</button>
+                {:else}
+                  <span class="muted caption">รอ{name(p.to)}ยืนยัน</span>
+                {/if}
+              </span>
             </span>
-            <button class="btn quiet small" onclick={() => onundo(p)}>ยกเลิก</button>
+          </li>
+        {/each}
+      </ul>
+    </div>
+  {/if}
+
+  {#if confirmed.length}
+    <div class="group">
+      <h3 class="caption muted">ยืนยันแล้ว</h3>
+      <ul class="pay-list">
+        {#each confirmed as p (p.id)}
+          <li class="pay" animate:flip={{ duration: 320 }} in:slide={{ duration: 280 }} out:slide={{ duration: 200 }}>
+            <span class="badge ok"><Icon name="check" size={14} /></span>
+            <span class="pay-main">
+              <span class="pay-line">
+                {name(p.from)} โอนให้ {name(p.to)} <span class="num">฿{formatBaht(p.amount)}</span>
+              </span>
+              <span class="pay-meta muted">
+                {#if p.confirmedBy}{name(p.confirmedBy)}ยืนยันว่าได้รับ {timeFmt.format(p.confirmedAt)}{:else}{timeFmt.format(p.at)}{/if}
+                {#if p.slip}
+                  <button class="slip-btn" onclick={() => onviewslip(p)}><Icon name="image" size={14} />ดูสลิป</button>
+                {/if}
+              </span>
+            </span>
+            {#if me === p.to}
+              <button class="btn quiet small" disabled={busy === p.id} onclick={() => act(p.id, () => onundo(p))}>ยกเลิก</button>
+            {/if}
           </li>
         {/each}
       </ul>
@@ -195,40 +258,93 @@
     background: rgba(34, 197, 94, 0.14);
     color: var(--success);
   }
-  .tick.small {
-    width: 26px;
-    height: 26px;
-  }
-  .paid {
+  .group {
     display: grid;
     gap: 6px;
   }
-  .paid h3 {
+  .group h3,
+  .hint {
     margin: 0;
   }
-  .paid ul {
+  .pay-list {
     list-style: none;
     margin: 0;
     padding: 0;
     display: grid;
   }
-  .paid li {
+  .pay {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 12px;
-    padding: 8px 0;
+    padding: 12px 0;
     border-bottom: 1px solid var(--hairline-soft);
     font-size: 14px;
   }
-  .paid-text {
+  .pay.pending.forme {
+    padding: 14px;
+    margin: 4px 0;
+    border: 0;
+    border-radius: var(--r-xl);
+    background: var(--surface-2);
+    box-shadow: inset 0 0 0 1px rgba(0, 153, 255, 0.6);
+  }
+  .badge {
+    width: 26px;
+    height: 26px;
+    flex: none;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+  }
+  .badge.ok {
+    background: rgba(34, 197, 94, 0.14);
+    color: var(--success);
+  }
+  .badge.wait {
+    background: var(--surface-3);
+    color: var(--ink);
+  }
+  .pay-main {
     flex: 1;
+    min-width: 0;
+    display: grid;
+    gap: 4px;
+  }
+  .pay-line b {
+    font-weight: 600;
+  }
+  .pay-meta {
     display: flex;
     flex-wrap: wrap;
-    gap: 2px 8px;
-    align-items: baseline;
-  }
-  .when {
+    align-items: center;
+    gap: 4px 10px;
     font-size: 12px;
+  }
+  .pay-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    margin-top: 4px;
+  }
+  .pay-actions:empty {
+    display: none;
+  }
+  .slip-btn {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: var(--accent);
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .slip-btn:hover {
+    text-decoration: underline;
   }
   .table-wrap {
     overflow-x: auto;
