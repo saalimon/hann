@@ -7,13 +7,21 @@
 
 <div class="container wrap">
   <p class="caption muted">hann</p>
-  {#if code === 'AUTH_DISABLED'}
+  {#if code === 'CONFIG_MISSING'}
+    <h1 class="display-lg">ยังไม่ได้ตั้งค่า Firebase</h1>
+    <p class="body-lg muted">เว็บนี้ถูก build โดยไม่มีค่า Firebase config</p>
+    <ol class="steps card">
+      <li>GitHub repo → Settings → Secrets and variables → Actions</li>
+      <li>สร้าง secret ชื่อ FIREBASE_CONFIG ใส่ config ของเว็บแอปเป็น JSON</li>
+      <li>รัน workflow Deploy to GitHub Pages ใหม่</li>
+    </ol>
+  {:else if code === 'AUTH_DISABLED'}
     <h1 class="display-lg">เปิด Anonymous sign-in ก่อนใช้งาน</h1>
     <p class="body-lg muted">
       แอปใช้บัญชีแบบไม่ระบุตัวตนเพื่อให้ลิงก์แชร์ใช้ได้ครั้งเดียวจริง ๆ ต้องเปิดครั้งเดียวใน Firebase Console
     </p>
     <ol class="steps card">
-      <li>เปิด Firebase Console โปรเจกต์ <b>{firebaseConfig.projectId}</b></li>
+      <li>เปิด Firebase Console โปรเจกต์ <b>{firebaseConfig?.projectId}</b></li>
       <li>ไปที่ Authentication แล้วกด Get started (ถ้ายังไม่เคยเปิด)</li>
       <li>แท็บ Sign-in method เลือก Anonymous แล้วเปิด Enable</li>
       <li>กลับมาโหลดหน้านี้ใหม่</li>

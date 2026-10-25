@@ -11,14 +11,8 @@ import { firebaseConfig } from '../../firebase-config.js';
 import { randomId } from '../ids.js';
 import { BackendError, INVITE_TTL_MS, toBackendError } from './errors.js';
 
-const app = initializeApp(firebaseConfig);
-// initializeAuth instead of getAuth: we only sign in anonymously, so we leave out
-// the popup/redirect resolver. That resolver loads a hidden iframe from
-// <project>.firebaseapp.com (eagerly on mobile and Safari) whose scripts register
-// `unload` handlers, which Chrome reports as a permissions-policy violation.
-const auth = initializeAuth(app, { persistence: [indexedDBLocalPersistence, browserLocalPersistence] });
-const db = getDatabase(app);
-
+let auth = null;
+let db = null;
 let uid = null;
 
 function waitForUser() {
@@ -31,7 +25,18 @@ function waitForUser() {
 }
 
 export async function init() {
+  // Without a build-time config there is nothing to connect to; the UI explains how to add it.
+  if (!firebaseConfig) throw new BackendError('CONFIG_MISSING');
   try {
+    if (!auth) {
+      const app = initializeApp(firebaseConfig);
+      // initializeAuth instead of getAuth: we only sign in anonymously, so we leave out
+      // the popup/redirect resolver. That resolver loads a hidden iframe from
+      // <project>.firebaseapp.com (eagerly on mobile and Safari) whose scripts register
+      // `unload` handlers, which Chrome reports as a permissions-policy violation.
+      auth = initializeAuth(app, { persistence: [indexedDBLocalPersistence, browserLocalPersistence] });
+      db = getDatabase(app);
+    }
     const existing = auth.currentUser || (await waitForUser());
     uid = existing ? existing.uid : (await signInAnonymously(auth)).user.uid;
     return { uid };

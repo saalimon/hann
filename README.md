@@ -17,26 +17,38 @@
 
 ## ตั้งค่า Firebase (ทำครั้งเดียว)
 
-โปรเจกต์ `your-project-id` ใน [Firebase Console](https://console.firebase.google.com/project/your-project-id):
+ใน Firebase Console ของโปรเจกต์คุณ:
 
-1. **Realtime Database** อยู่ที่ region Singapore:
-   `https://your-project-id-default-rtdb.asia-southeast1.firebasedatabase.app` (ตั้งไว้ใน
-   [`src/firebase-config.js`](src/firebase-config.js) แล้ว ถ้าย้ายฐานข้อมูล แก้ที่ไฟล์นั้น
-   หรือตั้ง repository variable `FIREBASE_DATABASE_URL` ใน Settings → Secrets and variables → Actions → Variables)
+1. **Realtime Database** → Create database แล้วจด URL ที่หัวหน้า Data ไว้ใส่ใน config
 2. **Authentication** → Get started → Sign-in method → เปิด **Anonymous**
    (ใช้ระบุเครื่อง เพื่อให้ลิงก์เชิญใช้ได้ครั้งเดียวจริง ผู้ใช้ไม่ต้องสมัครอะไร)
 3. **Realtime Database → Rules** → วางเนื้อหาจาก [`database.rules.json`](database.rules.json) แล้วกด Publish
-   หรือใช้ CLI: `npx firebase-tools deploy --only database`
+   หรือใช้ CLI: `npx firebase-tools deploy --only database --project <project-id>`
+4. **Project settings → Your apps** → คัดลอก config ของเว็บแอป แล้วเพิ่ม `databaseURL` จากข้อ 1
+
+## Firebase config (ไม่เก็บใน repo)
+
+ค่า config ถูกใส่ตอน build จาก environment variable `VITE_FIREBASE_CONFIG` (JSON หนึ่งก้อน)
+ต้องมี `apiKey`, `authDomain`, `projectId`, `appId`, `databaseURL`
+
+- **GitHub Pages:** Settings → Secrets and variables → Actions → New repository secret
+  ชื่อ `FIREBASE_CONFIG` ค่าเป็น JSON ตามรูปแบบใน [`.env.example`](.env.example)
+- **บนเครื่อง:** คัดลอก `.env.example` เป็น `.env.local` แล้วใส่ค่าจริง (ไฟล์นี้ถูก gitignore)
+
+ค่าที่อยู่ในเว็บฝั่ง browser ใครเปิดเว็บก็อ่านได้เสมอ ความปลอดภัยจริงมาจาก security rules
+และการจำกัด API key ใน Google Cloud Console → APIs & Services → Credentials
+(ตั้ง HTTP referrer เป็นโดเมนของเว็บ และจำกัด API ที่ key ใช้ได้)
 
 ## Deploy บน GitHub Pages
 
 ทุกครั้งที่ push เข้า `main` GitHub Actions จะรันเทสต์ build และ deploy ให้อัตโนมัติ
-ครั้งแรกต้องตั้ง **Settings → Pages → Source: GitHub Actions**
+ครั้งแรกต้องตั้ง **Settings → Pages → Source: GitHub Actions** และเพิ่ม secret `FIREBASE_CONFIG`
 
 ## พัฒนาบนเครื่อง
 
 ```bash
 npm install
+cp .env.example .env.local          # แล้วใส่ค่า Firebase จริง
 npm run dev                         # ใช้ Firebase จริง
 VITE_BACKEND=local npm run dev      # ไม่ต่อเน็ต: เก็บข้อมูลใน localStorage
 npm test                            # unit tests (PromptPay payload, การหาร, การโอน)
